@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Factorio Web - Browser Factory Automation Game</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Main WebGL / Canvas 2D Game Renderer -->
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Main Menu / Homescreen Overlay -->
+      <div id="main-menu-overlay" class="menu-overlay visible">
+        <div class="menu-backdrop"></div>
+        <div class="menu-container">
+          <div class="menu-badge">Factorio Browser Web App v2.0</div>
+          <h1 class="menu-logo">FACTORIO WEB</h1>
+          <p class="menu-subtitle">Automate • Build • Research • Launch Space Rocket</p>
+
+          <div class="menu-actions">
+            <button class="menu-btn primary" id="btn-start-game">🎮 Play Game (Quick Start)</button>
+            <button class="menu-btn" id="btn-new-world">🌍 New Custom World & Difficulty</button>
+            <button class="menu-btn" id="btn-save-load-menu">💾 Load Saved Factory</button>
+            <button class="menu-btn" id="btn-how-to-play">📖 How To Play Guide</button>
+          </div>
+
+          <div class="menu-footer">
+            <span>Factorio Web Engine • 60 FPS HTML5 Canvas</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top HUD Stats & Quick Bar -->
+      <div id="top-hud" class="hud-hidden">
+        <div class="hud-group">
+          <div class="hud-title">FACTORIO WEB</div>
+          <button class="hud-btn" id="btn-open-menu">☰ Menu</button>
+          <div class="hud-stat-box narrow" id="diff-hud-box">
+            <span class="hud-label">DIFFICULTY</span>
+            <span id="diff-hud-text" class="hud-bar-text text-only">NORMAL</span>
+          </div>
+          <div class="hud-stat-box">
+            <span class="hud-label">HEALTH</span>
+            <div class="hud-bar-container">
+              <div id="health-bar-fill" class="hud-bar-fill green"></div>
+              <span id="health-bar-text" class="hud-bar-text">100 / 100</span>
+            </div>
+          </div>
+          <div class="hud-stat-box wide">
+            <span class="hud-label">POWER GRID CONSUMPTION</span>
+            <div class="hud-bar-container">
+              <div id="power-bar-fill" class="hud-bar-fill yellow"></div>
+              <span id="power-bar-text" class="hud-bar-text">0 kW / 0 kW (100%)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-group">
+          <div class="hud-stat-box wide" id="research-hud-box">
+            <span class="hud-label">RESEARCH PROGRESS</span>
+            <div class="hud-bar-container">
+              <div id="research-bar-fill" class="hud-bar-fill green"></div>
+              <span id="research-bar-text" class="hud-bar-text">No Active Tech</span>
+            </div>
+          </div>
+          <button class="hud-btn" id="btn-tech-tree">🔬 Tech Tree (T)</button>
+          <button class="hud-btn" id="btn-production-stats">📊 Stats (P)</button>
+
+          <div class="speed-selector">
+            <button class="speed-btn active" data-speed="1">1x</button>
+            <button class="speed-btn" data-speed="2">2x</button>
+            <button class="speed-btn" data-speed="5">5x</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top-Right Minimap Canvas Widget -->
+      <div id="minimap-widget" class="minimap-box hud-hidden">
+        <div class="minimap-header">
+          <span>MINIMAP</span>
+          <button id="btn-toggle-pollution" title="Toggle Pollution Grid">☣️</button>
+        </div>
+        <canvas id="minimap-canvas" width="160" height="160"></canvas>
+      </div>
+
+      <!-- Bottom HUD Quickbar & Shortcuts -->
+      <div id="bottom-hud" class="hud-hidden">
+        <div class="hud-action-bar">
+          <button class="hud-btn primary" id="btn-open-inv">🎒 Inventory (E)</button>
+          <button class="hud-btn" id="btn-blueprint">📋 Blueprint (B)</button>
+          <button class="hud-btn" id="btn-deconstruct">❌ Deconstruct (X)</button>
+          <button class="hud-btn" id="btn-mute-sound">🔊 Sound On</button>
+        </div>
+        <div id="quickbar-container" class="quickbar"></div>
+        <div class="hud-controls-hint">
+          <span>WASD: Move</span> | <span>R: Rotate</span> | <span>Right Click: Dismantle</span> | <span>B: Blueprint</span> | <span>X: Deconstruct</span>
+        </div>
+      </div>
+
+      <!-- Modals -->
+      <div id="inventory-modal" class="modal-overlay"></div>
+      <div id="tech-tree-modal" class="modal-overlay"></div>
+      <div id="production-stats-modal" class="modal-overlay"></div>
+      <div id="inspector-modal" class="modal-overlay"></div>
+      <div id="save-load-modal" class="modal-overlay"></div>
+      <div id="guide-modal" class="modal-overlay"></div>
+      <div id="new-world-modal" class="modal-overlay"></div>
+
+      <!-- Respawn / Death Screen Modal -->
+      <div id="respawn-modal" class="modal-overlay">
+        <div class="modal-box medium death-box">
+          <div class="death-icon">☠️</div>
+          <h1 class="death-title">ENGINEER DESTROYED</h1>
+          <p class="death-desc">Your factory infrastructure remains intact. Respawn at spawn point to rebuild.</p>
+          <div id="death-stats-container" class="death-stats"></div>
+          <button class="menu-btn primary" id="btn-respawn-now">🔄 Respawn Engineer</button>
+        </div>
+      </div>
+
+      <!-- Rocket Launch Victory Modal -->
+      <div id="victory-modal" class="modal-overlay">
+        <div class="modal-box medium victory-box">
+          <div class="victory-icon">🚀</div>
+          <h1 class="victory-title">VICTORY!</h1>
+          <p class="victory-desc">You successfully constructed and launched the Space Rocket! The alien wilderness is conquered!</p>
+          <button class="menu-btn primary" id="btn-continue-freeplay">🌌 Continue Playing (Freeplay Mode)</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
