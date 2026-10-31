@@ -26,7 +26,7 @@ export interface BiterNest {
 export class EnemyManager {
   public biters: Biter[] = [];
   public nests: BiterNest[] = [];
-  private waveTimer: number = 60; // Attack wave every 60s
+  private waveTimer: number = 90; // Attack wave every 90s
   private idCounter: number = 0;
 
   constructor() {
@@ -43,8 +43,8 @@ export class EnemyManager {
         id: `nest-${idx}`,
         x: nx,
         y: ny,
-        health: 500,
-        maxHealth: 500,
+        health: 300,
+        maxHealth: 300,
         spawnTimer: 0
       });
     });
@@ -59,7 +59,7 @@ export class EnemyManager {
     }
 
     this.waveTimer -= dt;
-    const waveInterval = difficulty === 'deathworld' ? 25 : 60;
+    const waveInterval = difficulty === 'deathworld' ? 45 : 90;
 
     if (this.waveTimer <= 0) {
       this.waveTimer = waveInterval;
@@ -67,7 +67,7 @@ export class EnemyManager {
     }
 
     // Update Nests - periodic spawns only in Normal & Deathworld
-    const nestInterval = difficulty === 'deathworld' ? 10 : 20;
+    const nestInterval = difficulty === 'deathworld' ? 15 : 35;
     for (const nest of this.nests) {
       nest.spawnTimer += dt;
       if (nest.spawnTimer >= nestInterval) {
@@ -138,13 +138,13 @@ export class EnemyManager {
       }
     }
 
-    const mult = difficulty === 'deathworld' ? 2.0 : 1.0;
-    const waveSize = Math.min(40, Math.floor((4 + totalPollution / 100) * mult));
+    const mult = difficulty === 'deathworld' ? 1.5 : 0.8;
+    const waveSize = Math.min(25, Math.floor((3 + totalPollution / 150) * mult));
 
     for (let i = 0; i < waveSize; i++) {
       const randomNest = this.nests[Math.floor(Math.random() * this.nests.length)];
       if (randomNest) {
-        const biterType = Math.random() < (difficulty === 'deathworld' ? 0.4 : 0.2) ? 'medium' : 'small';
+        const biterType = Math.random() < (difficulty === 'deathworld' ? 0.3 : 0.1) ? 'medium' : 'small';
         this.spawnBiter(randomNest.x + (Math.random() - 0.5) * 3, randomNest.y + (Math.random() - 0.5) * 3, biterType, difficulty);
       }
     }
@@ -153,10 +153,10 @@ export class EnemyManager {
   public spawnBiter(x: number, y: number, type: 'small' | 'medium' | 'behemoth', difficulty: DifficultyMode = 'normal') {
     if (difficulty === 'peaceful' || difficulty === 'sandbox') return;
 
-    const hpMult = difficulty === 'deathworld' ? 1.5 : 1.0;
-    const hp = (type === 'behemoth' ? 400 : type === 'medium' ? 150 : 60) * hpMult;
-    const speed = type === 'small' ? 3.5 : type === 'medium' ? 2.8 : 2.0;
-    const damage = (type === 'behemoth' ? 40 : type === 'medium' ? 20 : 10) * (difficulty === 'deathworld' ? 1.5 : 1.0);
+    const hpMult = difficulty === 'deathworld' ? 1.3 : 1.0;
+    const hp = (type === 'behemoth' ? 250 : type === 'medium' ? 60 : 25) * hpMult;
+    const speed = type === 'small' ? 2.4 : type === 'medium' ? 2.0 : 1.6;
+    const damage = (type === 'behemoth' ? 20 : type === 'medium' ? 8 : 4) * (difficulty === 'deathworld' ? 1.3 : 1.0);
 
     this.biters.push({
       id: `biter-${this.idCounter++}`,
@@ -170,6 +170,61 @@ export class EnemyManager {
       targetX: 150,
       targetY: 150
     });
+  }
+
+  public damageBiter(biter: Biter, amount: number, game: any): boolean {
+    biter.health -= amount;
+    if (biter.health <= 0) {
+      const idx = this.biters.indexOf(biter);
+      if (idx !== -1) {
+        this.biters.splice(idx, 1);
+        soundManager.playExplosion();
+
+        // Spawn blood splash particles
+        for (let k = 0; k < 6; k++) {
+          game.particles.push({
+            x: biter.x + (Math.random() - 0.5) * 0.4,
+            y: biter.y + (Math.random() - 0.5) * 0.4,
+            vx: (Math.random() - 0.5) * 2,
+            vy: (Math.random() - 0.5) * 2,
+            life: 0.5,
+            maxLife: 0.5,
+            color: '#d32f2f',
+            size: 3 + Math.random() * 3,
+            type: 'blood'
+          });
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  public damageNest(nest: BiterNest, amount: number, game: any): boolean {
+    nest.health -= amount;
+    if (nest.health <= 0) {
+      const idx = this.nests.indexOf(nest);
+      if (idx !== -1) {
+        this.nests.splice(idx, 1);
+        soundManager.playExplosion();
+
+        for (let k = 0; k < 12; k++) {
+          game.particles.push({
+            x: nest.x + (Math.random() - 0.5) * 1.5,
+            y: nest.y + (Math.random() - 0.5) * 1.5,
+            vx: (Math.random() - 0.5) * 3,
+            vy: (Math.random() - 0.5) * 3,
+            life: 0.8,
+            maxLife: 0.8,
+            color: '#880e4f',
+            size: 4 + Math.random() * 4,
+            type: 'blood'
+          });
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   public findNearestBiter(x: number, y: number, maxRange: number): Biter | null {

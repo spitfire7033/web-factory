@@ -125,12 +125,13 @@ export class World {
 
         // Procedural elevation & biome
         const nEle = this.noise.noise2D(x * 0.02, y * 0.02);
-        const nTree = this.noise.noise2D(x * 0.1, y * 0.1);
+        const nTree = this.noise.noise2D(x * 0.08, y * 0.08);
 
-        const nCoal = this.oreNoise1.noise2D(x * 0.05 + 10, y * 0.05 + 10);
-        const nIron = this.oreNoise1.noise2D(x * 0.05 - 50, y * 0.05 - 50);
-        const nCopper = this.oreNoise2.noise2D(x * 0.05 + 80, y * 0.05 + 80);
-        const nStone = this.oreNoise2.noise2D(x * 0.05 - 100, y * 0.05 - 100);
+        // Lower frequency (0.02) & higher threshold (0.62) create rich, clean, distinct ore patches
+        const nCoal = this.oreNoise1.noise2D(x * 0.02 + 10, y * 0.02 + 10);
+        const nIron = this.oreNoise1.noise2D(x * 0.02 - 50, y * 0.02 - 50);
+        const nCopper = this.oreNoise2.noise2D(x * 0.02 + 80, y * 0.02 + 80);
+        const nStone = this.oreNoise2.noise2D(x * 0.02 - 100, y * 0.02 - 100);
 
         let type: TileType = 'grass';
         let resourceAmount = 0;
@@ -144,43 +145,43 @@ export class World {
         } else if (nEle < -0.3) {
           type = 'sand';
         } else {
-          // Resource Patches
-          if (nIron > 0.45) {
+          // Resource Patches (Clean, distinct clusters)
+          if (nIron > 0.62) {
             type = 'iron-ore';
-            resourceAmount = Math.floor((nIron - 0.4) * 2500) + 1500;
-          } else if (nCopper > 0.45) {
+            resourceAmount = Math.floor((nIron - 0.55) * 4000) + 2000;
+          } else if (nCopper > 0.62) {
             type = 'copper-ore';
-            resourceAmount = Math.floor((nCopper - 0.4) * 2500) + 1500;
-          } else if (nCoal > 0.45) {
+            resourceAmount = Math.floor((nCopper - 0.55) * 4000) + 2000;
+          } else if (nCoal > 0.62) {
             type = 'coal-ore';
-            resourceAmount = Math.floor((nCoal - 0.4) * 2500) + 1500;
-          } else if (nStone > 0.48) {
+            resourceAmount = Math.floor((nCoal - 0.55) * 4000) + 2000;
+          } else if (nStone > 0.65) {
             type = 'stone-ore';
-            resourceAmount = Math.floor((nStone - 0.4) * 2000) + 1000;
-          } else if (nTree > 0.35 && distFromSpawn > 12) {
+            resourceAmount = Math.floor((nStone - 0.6) * 3000) + 1500;
+          } else if (nTree > 0.45 && distFromSpawn > 14) {
             type = 'tree';
             resourceAmount = Math.floor(Math.random() * 20) + 30;
-          } else if (nEle > 0.2) {
+          } else if (nEle > 0.25) {
             type = 'dirt';
           }
         }
 
         // Guaranteed initial patches around spawn (150, 150)
-        if (x >= 142 && x <= 147 && y >= 142 && y <= 147) {
+        if (x >= 142 && x <= 146 && y >= 142 && y <= 146) {
           type = 'iron-ore';
-          resourceAmount = 4000;
-        } else if (x >= 153 && x <= 158 && y >= 142 && y <= 147) {
+          resourceAmount = 5000;
+        } else if (x >= 154 && x <= 158 && y >= 142 && y <= 146) {
           type = 'copper-ore';
-          resourceAmount = 4000;
-        } else if (x >= 142 && x <= 147 && y >= 153 && y <= 158) {
+          resourceAmount = 5000;
+        } else if (x >= 142 && x <= 146 && y >= 154 && y <= 158) {
           type = 'coal-ore';
-          resourceAmount = 4000;
-        } else if (x >= 153 && x <= 158 && y >= 153 && y <= 158) {
+          resourceAmount = 5000;
+        } else if (x >= 154 && x <= 158 && y >= 154 && y <= 158) {
           type = 'stone-ore';
-          resourceAmount = 3000;
-        } else if (x >= 135 && x <= 140 && y >= 148 && y <= 152) {
+          resourceAmount = 4000;
+        } else if (x >= 134 && x <= 138 && y >= 148 && y <= 152) {
           type = 'tree';
-          resourceAmount = 50;
+          resourceAmount = 60;
         }
 
         this.tiles[x][y] = {

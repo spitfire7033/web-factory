@@ -1,8 +1,9 @@
 import { Entity } from './Entity';
 import { Direction, ItemId } from '../types';
 import { TransportBeltEntity } from './BeltSystem';
-import { ChestEntity, FurnaceEntity, AssemblerEntity, MiningDrillEntity } from './ProductionEntities';
-import { BoilerEntity, LabEntity } from './ProductionEntities';
+import { ChestEntity, FurnaceEntity, AssemblerEntity, MiningDrillEntity, BoilerEntity, LabEntity, OilRefineryEntity, ChemicalPlantEntity } from './ProductionEntities';
+import { GunTurretEntity } from './MilitaryEntities';
+import { RocketSiloEntity } from './SpecialEntities';
 
 export class InserterEntity extends Entity {
   public heldItem: ItemId | null = null;
@@ -37,12 +38,11 @@ export class InserterEntity extends Entity {
   }
 
   public update(dt: number, game: any): void {
-    if (this.requiresPower && this.powerSatisfied < 0.2) return; // No electric power
+    if (this.requiresPower && this.powerSatisfied < 0.2) return;
 
     const speed = this.armSpeed * (this.requiresPower ? this.powerSatisfied : 1.0);
 
     if (this.armState === 'pickup') {
-      // Try picking up item from pickup tile
       if (!this.heldItem) {
         const pickupTile = this.getPickupTile();
         const srcEntity = game.getEntityAt(pickupTile.x, pickupTile.y);
@@ -86,28 +86,29 @@ export class InserterEntity extends Entity {
   }
 
   private extractItemFromSource(src: Entity): ItemId | null {
-    if (this.itemType === 'filter-inserter' && this.filterItem) {
-      // Must match filter
-    }
-
     if (src instanceof TransportBeltEntity) {
       const beltItem = src.removeItem();
       if (beltItem) {
-        if (this.filterItem && beltItem.item !== this.filterItem) {
-          // Reject filter mismatch
+        if (this.itemType === 'filter-inserter' && this.filterItem && beltItem.item !== this.filterItem) {
           src.addItem(beltItem.item, beltItem.lane, 0.9);
           return null;
         }
         return beltItem.item;
       }
     } else if (src instanceof ChestEntity) {
-      return src.takeFirstItem(this.filterItem);
+      return src.takeFirstItem(this.itemType === 'filter-inserter' ? this.filterItem : null);
     } else if (src instanceof FurnaceEntity) {
       return src.takeOutputItem();
     } else if (src instanceof AssemblerEntity) {
       return src.takeOutputItem();
     } else if (src instanceof MiningDrillEntity) {
       return src.takeOutputBuffer();
+    } else if (src instanceof LabEntity) {
+      return src.takeFirstPack();
+    } else if (src instanceof OilRefineryEntity) {
+      return src.takeOutputItem();
+    } else if (src instanceof ChemicalPlantEntity) {
+      return src.takeOutputItem();
     }
     return null;
   }
@@ -125,6 +126,16 @@ export class InserterEntity extends Entity {
       return target.addFuel(item);
     } else if (target instanceof LabEntity) {
       return target.addSciencePack(item);
+    } else if (target instanceof GunTurretEntity) {
+      return target.addAmmo(item);
+    } else if (target instanceof MiningDrillEntity) {
+      return target.addFuel(item);
+    } else if (target instanceof OilRefineryEntity) {
+      return target.addInputItem(item);
+    } else if (target instanceof ChemicalPlantEntity) {
+      return target.addInputItem(item);
+    } else if (target instanceof RocketSiloEntity) {
+      return target.addInputItem(item);
     }
     return false;
   }

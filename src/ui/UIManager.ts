@@ -3,7 +3,9 @@ import { ITEMS } from '../data/items';
 import { RECIPES } from '../data/recipes';
 import { TECHNOLOGIES } from '../data/technologies';
 import { soundManager } from '../audio/SoundManager';
-import { AssemblerEntity, FurnaceEntity, ChestEntity } from '../entities/ProductionEntities';
+import { AssemblerEntity, FurnaceEntity, ChestEntity, MiningDrillEntity, LabEntity, ChemicalPlantEntity, OilRefineryEntity } from '../entities/ProductionEntities';
+import { GunTurretEntity } from '../entities/MilitaryEntities';
+import { InserterEntity } from '../entities/InserterEntity';
 import { RocketSiloEntity } from '../entities/SpecialEntities';
 
 export class UIManager {
@@ -64,17 +66,33 @@ export class UIManager {
     for (let i = 0; i < 10; i++) {
       const itemId = this.game.player.quickbar[i];
       const isSelected = i === this.game.player.selectedQuickbarIndex;
+      const isDeconstruct = this.game.player.selectedQuickbarIndex === -2;
       const itemDef = itemId ? ITEMS[itemId as ItemId] : null;
 
       const slotEl = document.createElement('div');
       slotEl.className = `quickbar-slot ${isSelected ? 'selected' : ''}`;
+      slotEl.title = itemId ? `${itemDef?.name || itemId} (Right-Click to Clear)` : 'Empty Slot (Click Inventory item to set)';
       slotEl.innerHTML = `
         <span class="slot-num">${i === 9 ? 0 : i + 1}</span>
         ${itemDef ? `<span class="slot-icon">${itemDef.symbol}</span><span class="slot-name">${itemDef.name}</span>` : '<span class="slot-empty">Empty</span>'}
       `;
 
       slotEl.addEventListener('click', () => {
-        this.game.player.selectedQuickbarIndex = i;
+        if (this.game.player.selectedQuickbarIndex === i) {
+          this.game.player.selectedQuickbarIndex = -1;
+        } else {
+          this.game.player.selectedQuickbarIndex = i;
+        }
+        this.renderQuickbar();
+        soundManager.playClick();
+      });
+
+      slotEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.game.player.quickbar[i] = null;
+        if (this.game.player.selectedQuickbarIndex === i) {
+          this.game.player.selectedQuickbarIndex = -1;
+        }
         this.renderQuickbar();
         soundManager.playClick();
       });
@@ -85,8 +103,8 @@ export class UIManager {
 
   public updateHUD() {
     // Health Bar
-    const hpBar = document.getElementById('player-hp-fill');
-    const hpText = document.getElementById('player-hp-text');
+    const hpBar = document.getElementById('health-bar-fill');
+    const hpText = document.getElementById('health-bar-text');
     if (hpBar && hpText) {
       const pct = Math.max(0, (this.game.player.health / this.game.player.maxHealth) * 100);
       hpBar.style.width = `${pct}%`;
@@ -94,8 +112,8 @@ export class UIManager {
     }
 
     // Active Research Bar
-    const techBar = document.getElementById('active-tech-fill');
-    const techText = document.getElementById('active-tech-text');
+    const techBar = document.getElementById('research-bar-fill');
+    const techText = document.getElementById('research-bar-text');
     if (techBar && techText) {
       if (this.game.currentResearch) {
         const tech = this.game.currentResearch;
@@ -109,8 +127,8 @@ export class UIManager {
     }
 
     // Power Grid Ratio
-    const powerBar = document.getElementById('power-ratio-fill');
-    const powerText = document.getElementById('power-ratio-text');
+    const powerBar = document.getElementById('power-bar-fill');
+    const powerText = document.getElementById('power-bar-text');
     if (powerBar && powerText) {
       const ratio = this.game.powerManager.satisfactionRatio;
       const capKW = Math.round(this.game.powerManager.totalCapacityKW);
@@ -118,6 +136,103 @@ export class UIManager {
       powerBar.style.width = `${ratio * 100}%`;
       powerBar.style.backgroundColor = ratio >= 0.9 ? '#4caf50' : ratio >= 0.5 ? '#ff9800' : '#f44336';
       powerText.textContent = `Power: ${capKW}kW / ${demKW}kW (${Math.floor(ratio * 100)}%)`;
+    }
+
+    this.updateHoverHUD();
+  }
+
+  public updateHoverHUD() {
+    const hudCard = document.getElementById('hover-entity-hud');
+    const iconEl = document.getElementById('hover-hud-icon');
+    const titleEl = document.getElementById('hover-hud-title');
+    const detailsEl = document.getElementById('hover-hud-details');
+
+    if (!hudCard || !iconEl || !titleEl || !detailsEl) return;
+
+    const hTile = this.game.inputManager.hoveredTile;
+    const worldPos = this.game.camera.screenToWorld(this.game.inputManager.mouseX, this.game.inputManager.mouseY);
+
+    const entity = this.game.getEntityAt(hTile.x, hTile.y);
+    const biter = this.game.enemyManager.findNearestBiter(worldPos.x, worldPos.y, 1.2);
+    let nest = null;
+    for (const n of this.game.enemyManager.nests) {
+      if (Math.hypot(n.x - worldPos.x, n.y - worldPos.y) < 1.5) {
+        nest = n;
+        break;
+      }
+    }
+    const tile = this.game.world.getTile(hTile.x, hTile.y);
+
+    if (entity) {
+      const itemDef = ITEMS[entity.itemType as ItemId];
+      iconEl.textContent = itemDef?.symbol || '⚙️';
+      titleEl.textContent = itemDef?.name || entity.itemType;
+
+      const hpPct = Math.max(0, Math.min(100, (entity.health / entity.maxHealth) * 100));
+
+      let extraHtml = '';
+      if ('progress' in entity) {
+        extraHtml += `<div class="hover-stat-row"><span class="hover-stat-label">Progress:</span><span class="hover-stat-val">${Math.floor((entity as any).progress * 100)}%</span></div>`;
+      }
+      if ('craftProgress' in entity) {
+        extraHtml += `<div class="hover-stat-row"><span class="hover-stat-label">Crafting:</span><span class="hover-stat-val">${Math.floor((entity as any).craftProgress * 100)}%</span></div>`;
+      }
+      if ('outputBuffer' in entity && (entity as any).outputBuffer) {
+        const outDef = ITEMS[(entity as any).outputBuffer as ItemId];
+        extraHtml += `<div class="hover-stat-row"><span class="hover-stat-label">Output Buffer:</span><span class="hover-stat-val">${outDef?.symbol || ''} ${outDef?.name || (entity as any).outputBuffer}</span></div>`;
+      }
+      if ('fuelCount' in entity) {
+        extraHtml += `<div class="hover-stat-row"><span class="hover-stat-label">Fuel:</span><span class="hover-stat-val">${Math.ceil((entity as any).fuelCount)} Coal</span></div>`;
+      }
+
+      detailsEl.innerHTML = `
+        <div class="hover-stat-row"><span class="hover-stat-label">Health:</span><span class="hover-stat-val">${Math.ceil(entity.health)} / ${entity.maxHealth}</span></div>
+        <div class="hover-hp-bar"><div class="hover-hp-fill" style="width: ${hpPct}%"></div></div>
+        ${entity.requiresPower ? `<div class="hover-stat-row"><span class="hover-stat-label">Power Sat:</span><span class="hover-stat-val">${Math.floor(entity.powerSatisfied * 100)}%</span></div>` : ''}
+        ${extraHtml}
+      `;
+      hudCard.classList.remove('hud-hidden');
+    } else if (biter) {
+      iconEl.textContent = '👾';
+      titleEl.textContent = `${biter.type.toUpperCase()} BITER`;
+
+      const hpPct = Math.max(0, Math.min(100, (biter.health / biter.maxHealth) * 100));
+      detailsEl.innerHTML = `
+        <div class="hover-stat-row"><span class="hover-stat-label">Health:</span><span class="hover-stat-val">${Math.ceil(biter.health)} / ${biter.maxHealth}</span></div>
+        <div class="hover-hp-bar"><div class="hover-hp-fill" style="width: ${hpPct}%; background: #f44336;"></div></div>
+        <div class="hover-stat-row"><span class="hover-stat-label">Damage:</span><span class="hover-stat-val">${biter.damage} DPS</span></div>
+        <div class="hover-stat-row"><span class="hover-stat-label">Speed:</span><span class="hover-stat-val">${biter.speed}</span></div>
+      `;
+      hudCard.classList.remove('hud-hidden');
+    } else if (nest) {
+      iconEl.textContent = '👾';
+      titleEl.textContent = 'BITER NEST';
+
+      const hpPct = Math.max(0, Math.min(100, (nest.health / nest.maxHealth) * 100));
+      detailsEl.innerHTML = `
+        <div class="hover-stat-row"><span class="hover-stat-label">Health:</span><span class="hover-stat-val">${Math.ceil(nest.health)} / ${nest.maxHealth}</span></div>
+        <div class="hover-hp-bar"><div class="hover-hp-fill" style="width: ${hpPct}%; background: #f44336;"></div></div>
+        <div class="hover-stat-row"><span class="hover-stat-label">Spawn Timer:</span><span class="hover-stat-val">${Math.ceil(nest.spawnTimer)}s</span></div>
+      `;
+      hudCard.classList.remove('hud-hidden');
+    } else if (tile && tile.resourceAmount > 0) {
+      let icon = '💎';
+      let name = tile.type.toUpperCase();
+      if (tile.type === 'iron-ore') { icon = '⚙️'; name = 'Iron Ore Patch'; }
+      else if (tile.type === 'copper-ore') { icon = '🟧'; name = 'Copper Ore Patch'; }
+      else if (tile.type === 'coal-ore') { icon = '⬛'; name = 'Coal Deposit'; }
+      else if (tile.type === 'stone-ore') { icon = '🪨'; name = 'Stone Deposit'; }
+      else if (tile.type === 'tree') { icon = '🌲'; name = 'Wood Tree'; }
+
+      iconEl.textContent = icon;
+      titleEl.textContent = name;
+      detailsEl.innerHTML = `
+        <div class="hover-stat-row"><span class="hover-stat-label">Remaining:</span><span class="hover-stat-val">${tile.resourceAmount} units</span></div>
+        <div class="hover-stat-row"><span class="hover-stat-label">Tile Coord:</span><span class="hover-stat-val">(${hTile.x}, ${hTile.y})</span></div>
+      `;
+      hudCard.classList.remove('hud-hidden');
+    } else {
+      hudCard.classList.add('hud-hidden');
     }
   }
 
@@ -133,7 +248,7 @@ export class UIManager {
         </div>
         <div class="modal-body inventory-layout">
           <div class="inventory-section">
-            <h3>Player Storage (40 Slots)</h3>
+            <h3>Player Storage (Click item to set on selected Hotbar slot)</h3>
             <div id="player-inventory-grid" class="inventory-grid"></div>
           </div>
 
@@ -182,8 +297,17 @@ export class UIManager {
         slotEl.innerHTML = slot && itemDef ? `
           <span class="inv-symbol">${itemDef.symbol}</span>
           <span class="inv-count">${slot.count}</span>
-          <span class="inv-tooltip">${itemDef.name}</span>
+          <span class="inv-tooltip">${itemDef.name} (Click to Assign Hotbar)</span>
         ` : '';
+
+        if (slot && itemDef) {
+          slotEl.addEventListener('click', () => {
+            const targetIdx = this.game.player.selectedQuickbarIndex >= 0 ? this.game.player.selectedQuickbarIndex : 0;
+            this.game.player.quickbar[targetIdx] = slot.item;
+            this.renderQuickbar();
+            soundManager.playClick();
+          });
+        }
 
         grid.appendChild(slotEl);
       }
@@ -393,6 +517,88 @@ export class UIManager {
           const recipeId = (e.currentTarget as HTMLElement).getAttribute('data-recipe-id');
           const recipe = RECIPES.find(r => r.id === recipeId) || null;
           entity.setRecipe(recipe);
+          this.closeAllModals();
+          soundManager.playClick();
+        });
+      });
+    } else if (entity instanceof ChemicalPlantEntity) {
+      const recipes = RECIPES.filter(r => r.madeIn.includes('chemical'));
+      content.innerHTML = `
+        <p>Selected Recipe: <strong>${entity.activeRecipe ? entity.activeRecipe.name : 'None'}</strong></p>
+        <div class="recipe-select-grid">
+          ${recipes.map(r => `
+            <button class="recipe-select-btn ${entity.activeRecipe?.id === r.id ? 'active' : ''}" data-recipe-id="${r.id}">
+              ${ITEMS[r.results[0].item as ItemId]?.symbol || '⚗️'} ${r.name}
+            </button>
+          `).join('')}
+        </div>
+      `;
+
+      content.querySelectorAll('.recipe-select-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const recipeId = (e.currentTarget as HTMLElement).getAttribute('data-recipe-id');
+          const recipe = RECIPES.find(r => r.id === recipeId) || null;
+          entity.setRecipe(recipe);
+          this.closeAllModals();
+          soundManager.playClick();
+        });
+      });
+    } else if (entity instanceof MiningDrillEntity) {
+      content.innerHTML = `
+        <h3>Mining Drill Inspection</h3>
+        <p>Mining Speed: <strong>${entity.miningSpeed} items/sec</strong></p>
+        ${!entity.requiresPower ? `<p>Fuel Level: <strong>${entity.fuelCount} units</strong></p>` : `<p>Power Satisfaction: <strong>${Math.floor(entity.powerSatisfied * 100)}%</strong></p>`}
+        <p>Output Buffer: <strong>${entity.outputBuffer ? (ITEMS[entity.outputBuffer]?.name || entity.outputBuffer) : 'Empty'}</strong></p>
+      `;
+    } else if (entity instanceof FurnaceEntity) {
+      content.innerHTML = `
+        <h3>Furnace Smelting Status</h3>
+        <p>Smelting Speed: <strong>${entity.craftSpeed}x</strong></p>
+        ${!entity.requiresPower ? `<p>Fuel Count: <strong>${entity.fuelCount} Coal/Wood</strong></p>` : `<p>Power Satisfaction: <strong>${Math.floor(entity.powerSatisfied * 100)}%</strong></p>`}
+        <p>Input Items: <strong>${entity.inputItem ? `${ITEMS[entity.inputItem]?.name} x${entity.inputCount}` : 'None'}</strong></p>
+        <p>Smelted Output: <strong>${entity.outputItem ? `${ITEMS[entity.outputItem]?.name} x${entity.outputCount}` : 'None'}</strong></p>
+      `;
+    } else if (entity instanceof LabEntity) {
+      content.innerHTML = `
+        <h3>🔬 Research Lab Inventory</h3>
+        <p>Power Satisfaction: <strong>${Math.floor(entity.powerSatisfied * 100)}%</strong></p>
+        <div class="inventory-grid">
+          ${['science-pack-1', 'science-pack-2', 'science-pack-3', 'science-pack-4'].map(sp => {
+            const packId = sp as ItemId;
+            const count = entity.sciencePacks[packId] || 0;
+            return `
+              <div class="inv-slot">
+                <span class="inv-symbol">${ITEMS[packId].symbol}</span>
+                <span class="inv-count">${count}</span>
+                <span class="inv-tooltip">${ITEMS[packId].name}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else if (entity instanceof GunTurretEntity) {
+      content.innerHTML = `
+        <h3>🔫 Defense Gun Turret</h3>
+        <p>Targeting Range: <strong>${entity.range} tiles</strong></p>
+        <p>Loaded Ammunition: <strong>${entity.ammoCount} rounds (${ITEMS[entity.ammoType]?.name || entity.ammoType})</strong></p>
+      `;
+    } else if (entity instanceof InserterEntity && entity.itemType === 'filter-inserter') {
+      content.innerHTML = `
+        <h3>🦾 Filter Inserter Configuration</h3>
+        <p>Current Filter: <strong>${entity.filterItem ? (ITEMS[entity.filterItem]?.name || entity.filterItem) : 'None (Accept All)'}</strong></p>
+        <div class="recipe-select-grid">
+          ${Object.values(ITEMS).slice(0, 16).map(item => `
+            <button class="recipe-select-btn ${entity.filterItem === item.id ? 'active' : ''}" data-filter-id="${item.id}">
+              ${item.symbol} ${item.name}
+            </button>
+          `).join('')}
+        </div>
+      `;
+
+      content.querySelectorAll('.recipe-select-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const filterId = (e.currentTarget as HTMLElement).getAttribute('data-filter-id') as ItemId;
+          entity.filterItem = filterId;
           this.closeAllModals();
           soundManager.playClick();
         });

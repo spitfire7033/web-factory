@@ -6,7 +6,7 @@ import { UIManager } from '../ui/UIManager';
 import { Entity } from '../entities/Entity';
 import { TransportBeltEntity, UndergroundBeltEntity, SplitterEntity } from '../entities/BeltSystem';
 import { InserterEntity } from '../entities/InserterEntity';
-import { ChestEntity, MiningDrillEntity, FurnaceEntity, AssemblerEntity, BoilerEntity, LabEntity } from '../entities/ProductionEntities';
+import { ChestEntity, MiningDrillEntity, FurnaceEntity, AssemblerEntity, BoilerEntity, LabEntity, OilRefineryEntity, ChemicalPlantEntity, FluidTankEntity } from '../entities/ProductionEntities';
 import { ElectricPoleEntity, SteamEngineEntity, SolarPanelEntity, AccumulatorEntity, PowerGridManager } from '../entities/PowerEntities';
 import { StoneWallEntity, GunTurretEntity, LaserTurretEntity } from '../entities/MilitaryEntities';
 import { RocketSiloEntity, RoboportEntity, RailEntity, LocomotiveEntity } from '../entities/SpecialEntities';
@@ -177,9 +177,13 @@ export class Game {
   }
 
   private setupStartingFactory() {
-    this.placeEntity('burner-mining-drill', 144, 144, 2);
-    this.placeEntity('stone-furnace', 144, 147, 0);
-    this.placeEntity('burner-inserter', 144, 146, 2);
+    // Aligned 2x2 Burner Mining Drill facing East (direction 1) outputs directly to (146, 144)
+    const drill = this.placeEntity('burner-mining-drill', 144, 144, 1) as MiningDrillEntity;
+    // 2x2 Stone Furnace placed at (146, 144)
+    const furnace = this.placeEntity('stone-furnace', 146, 144, 0) as FurnaceEntity;
+
+    if (drill) drill.fuelCount = 25; // Pre-feed starter coal so drill works immediately out-of-the-box!
+    if (furnace) furnace.fuelCount = 25; // Pre-feed starter furnace fuel!
   }
 
   private resizeCanvas() {
@@ -275,11 +279,106 @@ export class Game {
     this.renderTerrain();
     this.renderPowerWires();
     this.renderEntities();
+    this.renderBuildingGhosts();
     this.renderEnemies();
     this.renderPlayer();
     this.renderParticles();
     this.renderLighting();
     this.renderGhostPreview();
+    this.renderHoverOutlines();
+  }
+
+  private renderBuildingGhosts() {
+    const ts = this.camera.tileSize;
+    for (const ghost of this.buildingGhosts) {
+      const screen = this.camera.worldToScreen(ghost.x, ghost.y);
+      const itemDef = ITEMS[ghost.itemType];
+
+      this.ctx.fillStyle = 'rgba(0, 229, 255, 0.25)';
+      this.ctx.fillRect(screen.x + 1, screen.y + 1, ts - 2, ts - 2);
+
+      this.ctx.strokeStyle = '#00e5ff';
+      this.ctx.lineWidth = 1.5;
+      this.ctx.setLineDash([4, 4]);
+      this.ctx.strokeRect(screen.x + 1, screen.y + 1, ts - 2, ts - 2);
+      this.ctx.setLineDash([]);
+
+      if (itemDef) {
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        this.ctx.font = `${Math.floor(ts * 0.45)}px sans-serif`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(itemDef.symbol, screen.x + ts / 2, screen.y + ts / 2);
+      }
+    }
+  }
+
+  private renderHoverOutlines() {
+    const ts = this.camera.tileSize;
+    const hTile = this.inputManager.hoveredTile;
+    const worldPos = this.camera.screenToWorld(this.inputManager.mouseX, this.inputManager.mouseY);
+
+    // 1. Hovered Entity Outline
+    const ent = this.getEntityAt(hTile.x, hTile.y);
+    if (ent) {
+      const screen = this.camera.worldToScreen(ent.x, ent.y);
+      this.ctx.strokeStyle = '#ffee58'; // Glowing yellow selection box
+      this.ctx.lineWidth = 3;
+      this.ctx.strokeRect(screen.x - 2, screen.y - 2, ent.width * ts + 4, ent.height * ts + 4);
+
+      // Draw output arrow indicator
+      const outTile = ent.getOutputTile();
+      const outScreen = this.camera.worldToScreen(outTile.x + 0.5, outTile.y + 0.5);
+      const centerScreen = this.camera.worldToScreen(ent.x + ent.width / 2, ent.y + ent.height / 2);
+      this.ctx.strokeStyle = '#ff9f1c';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.moveTo(centerScreen.x, centerScreen.y);
+      this.ctx.lineTo(outScreen.x, outScreen.y);
+      this.ctx.stroke();
+
+      // Output arrow tip
+      this.ctx.fillStyle = '#ff9f1c';
+      this.ctx.beginPath();
+      this.ctx.arc(outScreen.x, outScreen.y, 5, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+
+    // 2. Hovered Biter Outline
+    const biter = this.enemyManager.findNearestBiter(worldPos.x, worldPos.y, 1.2);
+    if (biter) {
+      const screen = this.camera.worldToScreen(biter.x, biter.y);
+      const rad = biter.type === 'behemoth' ? ts * 0.55 : biter.type === 'medium' ? ts * 0.45 : ts * 0.35;
+      this.ctx.strokeStyle = '#f44336'; // Bright red enemy outline
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(screen.x, screen.y, rad, 0, Math.PI * 2);
+      this.ctx.stroke();
+    }
+
+    // 3. Hovered Biter Nest Outline
+    for (const nest of this.enemyManager.nests) {
+      if (Math.hypot(nest.x - worldPos.x, nest.y - worldPos.y) < 1.5) {
+        const screen = this.camera.worldToScreen(nest.x, nest.y);
+        this.ctx.strokeStyle = '#f44336';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.arc(screen.x, screen.y, ts * 0.95, 0, Math.PI * 2);
+        this.ctx.stroke();
+        break;
+      }
+    }
+
+    // 4. Hovered Resource Tile Outline
+    if (!ent && !biter) {
+      const tile = this.world.getTile(hTile.x, hTile.y);
+      if (tile && (tile.resourceAmount > 0 || tile.type === 'water')) {
+        const screen = this.camera.worldToScreen(hTile.x, hTile.y);
+        this.ctx.strokeStyle = 'rgba(0, 180, 216, 0.8)'; // Cyan highlight tile
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(screen.x, screen.y, ts, ts);
+      }
+    }
   }
 
   private renderTerrain() {
@@ -392,6 +491,52 @@ export class Game {
       const dirVec = ent.getDirectionVector();
       const cx = screen.x + (ent.width * ts) / 2;
       const cy = screen.y + (ent.height * ts) / 2;
+
+      // Render directional arrow indicator for directional entities
+      if (ent instanceof MiningDrillEntity || ent instanceof InserterEntity || ent instanceof TransportBeltEntity) {
+        const arrowX = cx + dirVec.x * (ent.width * ts * 0.35);
+        const arrowY = cy + dirVec.y * (ent.height * ts * 0.35);
+
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        this.ctx.beginPath();
+        this.ctx.arc(arrowX, arrowY, 4, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+
+      // Render Machine Progress Bar
+      let progressRatio = -1;
+      let barColor = '#4caf50';
+
+      if (ent instanceof MiningDrillEntity) {
+        progressRatio = ent.progress;
+        if (ent.outputBuffer) { barColor = '#ff9800'; } // Buffer full indicator
+        else if (ent.requiresPower && ent.powerSatisfied < 0.2) { barColor = '#f44336'; }
+        else if (!ent.requiresPower && ent.fuelCount <= 0) { barColor = '#f44336'; }
+      } else if (ent instanceof FurnaceEntity) {
+        progressRatio = ent.craftProgress;
+        if (ent.craftProgress <= 0 && (!ent.inputItem || ent.fuelCount <= 0)) { progressRatio = -1; }
+      } else if (ent instanceof AssemblerEntity) {
+        progressRatio = ent.craftProgress;
+      } else if (ent instanceof LabEntity) {
+        progressRatio = (ent.researchProgress / (this.currentResearch?.cost.timePerUnit || 1));
+      } else if (ent instanceof RocketSiloEntity) {
+        progressRatio = ent.rocketPartsCount / 100;
+      }
+
+      if (progressRatio >= 0 && progressRatio <= 1.0) {
+        const barW = ent.width * ts - 6;
+        const barH = 5;
+        const barX = screen.x + 3;
+        const barY = screen.y + ent.height * ts - 8;
+
+        this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        this.ctx.fillRect(barX, barY, barW, barH);
+        this.ctx.fillStyle = barColor;
+        this.ctx.fillRect(barX, barY, barW * progressRatio, barH);
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(barX, barY, barW, barH);
+      }
 
       if (ent instanceof TransportBeltEntity) {
         const offset = (this.animTime * ent.speed * 20) % (ts * 0.4);
@@ -641,17 +786,60 @@ export class Game {
 
   public handleLeftClick(x: number, y: number, dir: Direction) {
     if (this.isDead) return;
-    const selItem = this.player.quickbar[this.player.selectedQuickbarIndex];
 
-    if (selItem) {
-      if (this.canPlaceEntity(selItem, x, y) && this.player.hasItem(selItem, 1)) {
-        this.placeEntity(selItem, x, y, dir);
-        this.player.removeItem(selItem, 1);
-        soundManager.playBuild();
-        this.uiManager.renderQuickbar();
+    if (this.player.selectedQuickbarIndex === -2) {
+      // Deconstruct tool mode active
+      const ent = this.getEntityAt(x, y);
+      if (ent) {
+        this.destroyEntity(ent);
+        this.player.addItem(ent.itemType, 1);
+        soundManager.playDismantle();
         this.uiManager.updateInventoryUI();
       }
+      return;
+    }
+
+    const selItem = this.player.selectedQuickbarIndex >= 0 ? this.player.quickbar[this.player.selectedQuickbarIndex] : null;
+
+    if (selItem === 'blueprint-tool') {
+      // Blueprint ghost tool mode
+      const isClear = this.canPlaceEntity('assembling-machine-1', x, y);
+      if (isClear) {
+        this.buildingGhosts.push({ itemType: 'assembling-machine-1', x, y, direction: dir });
+        soundManager.playClick();
+      }
+      return;
+    }
+
+    if (selItem) {
+      if (this.canPlaceEntity(selItem, x, y)) {
+        if (this.player.hasItem(selItem, 1)) {
+          this.placeEntity(selItem, x, y, dir);
+          this.player.removeItem(selItem, 1);
+          soundManager.playBuild();
+          this.uiManager.renderQuickbar();
+          this.uiManager.updateInventoryUI();
+        } else {
+          // No item in inventory -> place building ghost for bots/player
+          this.buildingGhosts.push({ itemType: selItem, x, y, direction: dir });
+          soundManager.playClick();
+        }
+      }
     } else {
+      // Check if clicking on ghost tile to complete building manually
+      const ghostIdx = this.buildingGhosts.findIndex(g => g.x === x && g.y === y);
+      if (ghostIdx !== -1) {
+        const ghost = this.buildingGhosts[ghostIdx];
+        if (this.player.hasItem(ghost.itemType, 1)) {
+          this.placeEntity(ghost.itemType, ghost.x, ghost.y, ghost.direction);
+          this.player.removeItem(ghost.itemType, 1);
+          this.buildingGhosts.splice(ghostIdx, 1);
+          soundManager.playBuild();
+          this.uiManager.updateInventoryUI();
+          return;
+        }
+      }
+
       const ent = this.getEntityAt(x, y);
       if (ent) {
         this.uiManager.inspectEntity(ent);
@@ -728,6 +916,12 @@ export class Game {
       ent = new GunTurretEntity(id, itemId, x, y);
     } else if (itemId === 'laser-turret') {
       ent = new LaserTurretEntity(id, itemId, x, y);
+    } else if (itemId === 'oil-refinery') {
+      ent = new OilRefineryEntity(id, itemId, x, y);
+    } else if (itemId === 'chemical-plant') {
+      ent = new ChemicalPlantEntity(id, itemId, x, y);
+    } else if (itemId === 'fluid-tank') {
+      ent = new FluidTankEntity(id, itemId, x, y);
     } else if (itemId === 'rocket-silo') {
       ent = new RocketSiloEntity(id, itemId, x, y);
     } else if (itemId === 'roboport') {

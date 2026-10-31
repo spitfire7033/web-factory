@@ -88,22 +88,39 @@ export class PowerGridManager {
     let demand = 0;
 
     const poles: ElectricPoleEntity[] = [];
-    const consumers: Entity[] = [];
-    const producers: Entity[] = [];
+    const rawProducers: Entity[] = [];
+    const rawConsumers: Entity[] = [];
     const accumulators: AccumulatorEntity[] = [];
 
     for (const ent of game.entities) {
       if (ent instanceof ElectricPoleEntity) {
         poles.push(ent);
       } else if (ent instanceof SolarPanelEntity || ent instanceof SteamEngineEntity) {
-        producers.push(ent);
-        capacity += ent.powerProductionKW;
+        rawProducers.push(ent);
       } else if (ent instanceof AccumulatorEntity) {
         accumulators.push(ent);
       } else if (ent.requiresPower) {
-        consumers.push(ent);
-        demand += ent.powerConsumptionKW;
+        rawConsumers.push(ent);
       }
+    }
+
+    const isConnectedToPole = (ent: Entity): boolean => {
+      const ec = ent.getCenter();
+      return poles.some(pole => {
+        const pc = pole.getCenter();
+        const dist = Math.hypot(ec.x - pc.x, ec.y - pc.y);
+        return dist <= pole.supplyRadius + Math.max(ent.width, ent.height) / 2;
+      });
+    };
+
+    const validProducers = rawProducers.filter(p => isConnectedToPole(p));
+    const validConsumers = rawConsumers.filter(c => isConnectedToPole(c));
+
+    for (const p of validProducers) {
+      capacity += p.powerProductionKW;
+    }
+    for (const c of validConsumers) {
+      demand += c.powerConsumptionKW;
     }
 
     this.totalCapacityKW = capacity;
@@ -113,11 +130,9 @@ export class PowerGridManager {
     if (demand > 0) {
       if (capacity >= demand) {
         satisfaction = 1.0;
-        // Charge accumulators with excess power
         const surplus = capacity - demand;
         accumulators.forEach(acc => acc.charge(surplus / Math.max(1, accumulators.length), dt));
       } else {
-        // Attempt discharge accumulators for missing power
         const deficitKW = demand - capacity;
         let accumulatorKW = 0;
         accumulators.forEach(acc => {
@@ -130,9 +145,9 @@ export class PowerGridManager {
 
     this.satisfactionRatio = satisfaction;
 
-    // Apply satisfaction ratio to all consumers
-    for (const cons of consumers) {
-      cons.powerSatisfied = satisfaction;
+    // Apply satisfaction ratio to connected consumers, 0 to un-poled consumers
+    for (const cons of rawConsumers) {
+      cons.powerSatisfied = isConnectedToPole(cons) ? satisfaction : 0.0;
     }
   }
 }

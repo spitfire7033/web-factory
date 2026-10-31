@@ -104,7 +104,7 @@ export class UndergroundBeltEntity extends Entity {
 
   public update(dt: number, game: any): void {
     if (this.mode === 'entrance') {
-      // Find matching exit underground belt in direction line up to 5 tiles
+      // Find matching exit underground belt in direction line up to 6 tiles
       const vec = this.getDirectionVector();
       let exitBelt: UndergroundBeltEntity | null = null;
 
@@ -126,6 +126,20 @@ export class UndergroundBeltEntity extends Entity {
           }
         }
       }
+    } else {
+      // Exit mode: Eject queued items onto downstream belt or entity
+      for (let i = 0; i < this.items.length; i++) {
+        const itemObj = this.items[i];
+        const outTile = this.getOutputTile();
+        const targetEntity = game.getEntityAt(outTile.x, outTile.y);
+
+        if (targetEntity instanceof TransportBeltEntity) {
+          if (targetEntity.addItem(itemObj.item, itemObj.lane, 0.0)) {
+            this.items.splice(i, 1);
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -136,7 +150,6 @@ export class UndergroundBeltEntity extends Entity {
   }
 
   public addItemToExit(item: ItemId, lane: 'left' | 'right'): boolean {
-    // Add to exit items
     if (this.items.length >= 8) return false;
     this.items.push({ item, timer: 1.0, lane });
     return true;
@@ -149,21 +162,19 @@ export class SplitterEntity extends Entity {
   public rightLaneItems: ItemId[] = [];
 
   constructor(id: string, itemType: ItemId, x: number, y: number, direction: Direction = 0) {
-    // Splitter occupies 2x1 tiles depending on direction
     const isHoriz = direction === 0 || direction === 2;
     super(id, itemType, x, y, isHoriz ? 2 : 1, isHoriz ? 1 : 2, direction, 150);
   }
 
   public update(dt: number, game: any): void {
-    // Split incoming items evenly across two output tiles
     const vec = this.getDirectionVector();
 
-    // Outputs tile 1 and tile 2
     let outX1 = this.x + vec.x;
     let outY1 = this.y + vec.y;
     let outX2 = this.x + (this.width > 1 ? 1 : 0) + vec.x;
     let outY2 = this.y + (this.height > 1 ? 1 : 0) + vec.y;
 
+    // Process Left Lane Items
     if (this.leftLaneItems.length > 0) {
       const item = this.leftLaneItems[0];
       const targetX = this.toggleOutput ? outX1 : outX2;
@@ -173,6 +184,21 @@ export class SplitterEntity extends Entity {
       if (targetEnt instanceof TransportBeltEntity) {
         if (targetEnt.addItem(item, 'left')) {
           this.leftLaneItems.shift();
+          this.toggleOutput = !this.toggleOutput;
+        }
+      }
+    }
+
+    // Process Right Lane Items
+    if (this.rightLaneItems.length > 0) {
+      const item = this.rightLaneItems[0];
+      const targetX = this.toggleOutput ? outX2 : outX1;
+      const targetY = this.toggleOutput ? outY2 : outY1;
+      const targetEnt = game.getEntityAt(targetX, targetY);
+
+      if (targetEnt instanceof TransportBeltEntity) {
+        if (targetEnt.addItem(item, 'right')) {
+          this.rightLaneItems.shift();
           this.toggleOutput = !this.toggleOutput;
         }
       }

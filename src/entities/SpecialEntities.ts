@@ -98,8 +98,17 @@ export class LocomotiveEntity extends Entity {
 
   public update(dt: number, game: any): void {
     const vec = this.getDirectionVector();
-    this.x += vec.x * this.speed * dt * 0.1;
-    this.y += vec.y * this.speed * dt * 0.1;
+    const nextX = this.x + vec.x * this.speed * dt * 0.1;
+    const nextY = this.y + vec.y * this.speed * dt * 0.1;
+
+    // Rail check: Train only moves if a RailEntity is underneath or ahead
+    const checkEnt = game.getEntityAt(Math.floor(nextX), Math.floor(nextY));
+    const currentRail = game.getEntityAt(Math.floor(this.x), Math.floor(this.y));
+
+    if ((checkEnt && checkEnt instanceof RailEntity) || (currentRail && currentRail instanceof RailEntity)) {
+      this.x = nextX;
+      this.y = nextY;
+    }
   }
 }
 

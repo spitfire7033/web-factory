@@ -1,4 +1,5 @@
 import { ItemId, ItemStack } from '../types';
+import { ITEMS } from '../data/items';
 import { soundManager } from '../audio/SoundManager';
 
 export class Player {
@@ -66,10 +67,11 @@ export class Player {
   }
 
   public addItem(item: ItemId, count: number = 1): boolean {
+    const stackLimit = ITEMS[item]?.stackSize || 100;
     for (let i = 0; i < this.inventory.length; i++) {
       const slot = this.inventory[i];
-      if (slot && slot.item === item && slot.count < 100) {
-        const add = Math.min(100 - slot.count, count);
+      if (slot && slot.item === item && slot.count < stackLimit) {
+        const add = Math.min(stackLimit - slot.count, count);
         slot.count += add;
         count -= add;
         if (count <= 0) return true;
@@ -114,9 +116,15 @@ export class Player {
     return true;
   }
 
+  public weaponCooldown: number = 0;
+
   public update(dt: number, game: any, keys: Record<string, boolean>) {
     if (this.invincibilityTimer > 0) {
       this.invincibilityTimer = Math.max(0, this.invincibilityTimer - dt);
+    }
+
+    if (this.weaponCooldown > 0) {
+      this.weaponCooldown = Math.max(0, this.weaponCooldown - dt);
     }
 
     let dx = 0;
@@ -144,6 +152,85 @@ export class Player {
 
     if (keys['KeyF']) {
       this.pickupNearbyItems(game);
+    }
+
+    // Auto attack if Space or C key held
+    if (keys['Space'] || keys['KeyC']) {
+      this.shoot(game);
+    }
+  }
+
+  public shoot(game: any, targetX?: number, targetY?: number) {
+    if (this.weaponCooldown > 0) return;
+
+    let tx = targetX;
+    let ty = targetY;
+    let targetBiter = null;
+    let targetNest = null;
+
+    if (tx === undefined || ty === undefined) {
+      // Find nearest biter or nest within 14 tiles
+      targetBiter = game.enemyManager.findNearestBiter(this.x, this.y, 14);
+      if (targetBiter) {
+        tx = targetBiter.x;
+        ty = targetBiter.y;
+      } else {
+        // Look for nearest nest
+        let nearestNest = null;
+        let minDist = 14;
+        for (const nest of game.enemyManager.nests) {
+          const dist = Math.hypot(nest.x - this.x, nest.y - this.y);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestNest = nest;
+          }
+        }
+        if (nearestNest) {
+          targetNest = nearestNest;
+          tx = nearestNest.x;
+          ty = nearestNest.y;
+        }
+      }
+    } else {
+      // Check if target is a specific biter or nest
+      targetBiter = game.enemyManager.biters.find((b: any) => Math.hypot(b.x - tx!, b.y - ty!) < 1.2);
+      if (!targetBiter) {
+        targetNest = game.enemyManager.nests.find((n: any) => Math.hypot(n.x - tx!, n.y - ty!) < 1.5);
+      }
+    }
+
+    if (tx === undefined || ty === undefined) return;
+
+    const dist = Math.hypot(tx - this.x, ty - this.y);
+    if (dist > 16) return; // Out of range
+
+    this.weaponCooldown = 0.15; // ~6.6 rounds/sec
+    soundManager.playMine(); // Bullet shot sound feedback
+
+    // Create bullet tracer particle
+    game.particles.push({
+      startX: this.x,
+      startY: this.y,
+      endX: tx,
+      endY: ty,
+      life: 0.1,
+      maxLife: 0.1,
+      color: '#ffee58',
+      type: 'bullet'
+    });
+
+    const damage = 18; // High firepower player weapon
+
+    if (targetBiter) {
+      game.enemyManager.damageBiter(targetBiter, damage, game);
+    } else if (targetNest) {
+      game.enemyManager.damageNest(targetNest, damage, game);
+    } else {
+      // Check again for any biter/nest near impact point
+      const b = game.enemyManager.findNearestBiter(tx, ty, 1.5);
+      if (b) {
+        game.enemyManager.damageBiter(b, damage, game);
+      }
     }
   }
 
